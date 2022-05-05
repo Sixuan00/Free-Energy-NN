@@ -142,81 +142,78 @@ class HonNN:
             return psi_func(s)
         return self.BHalf_on_site(site_indexes[-1], lambda s: self.BHalf_on_sites(site_indexes[:-1], psi_func, s, beta), s, beta)
 
-    def Bs_on_edge(self, psi_func, s, mode='0', beta=None):
+    def Bs_on_edge_3d(self, psi_func, s, beta=None):
         if beta is None:
             beta = self.b
 
         beta = torch.tensor([beta], dtype=self.type, device=self.device)
-        if mode == '0':
-            mask = (s[:, 1] * s[:, 2] + 1) / 2
-            mask0 = (s[:, 0] * s[:, 2] + 1) / 2
 
-            psi0 = psi_func(s[:, 1:])
-            psi = (torch.exp(beta) * psi0 * mask + torch.exp(-beta) * psi0 * (1 - mask)) * mask0
+        m = s.shape[1]
+        n = self.n
 
-            return psi
+        mask = (s[:, m - n - 2] * s[:, m - n - 1] + 1) / 2
+        mask0 = (s[:, m - n - 2] * s[:, m - n] + 1) / 2
+        mask1 = (s[:, m - n - 1] * s[:, m - n + 1] + 1) / 2
+        mask2 = (s[:, 0] * s[:, m - n + 1] + 1) / 2
 
-        if mode == '1':
-            mask = (s[:, 1] * s[:, 2] + 1) / 2
-            mask0 = (s[:, 0] * s[:, 2] + 1) / 2
+        index_list = [i for i in range(m)]
+        index_list.remove(0)
+        index_list.remove(m - n - 2)
+        index_list.remove(m - n - 1)
 
-            psi0 = psi_func(s)
-            psi = (torch.exp(beta) * psi0 * mask + torch.exp(-beta) * psi0 * (1 - mask)) * mask0
-
-            return psi
-
-        if mode == '-1':
-            mask = (s[:, -2] * s[:, -3] + 1) / 2
-            mask0 = (s[:, -1] * s[:, -3] + 1) / 2
-
-            psi0 = psi_func(s[:, 1:-1])
-            psi = (torch.exp(beta) * psi0 * mask + torch.exp(-beta) * psi0 * (1 - mask)) * mask0
-
-            return psi
-
-    def Bs_on_edges(self, psi_func, s, beta=None):
-        if beta is None:
-            beta = self.b
-        return self.Bs_on_edge(lambda s: self.Bs_on_edge(psi_func, s, '-1', beta), s, '1', beta)
-
-    def B_on_middle(self, psi_func, s, beta=None):
-        if beta is None:
-            beta = self.b
-
-        i1 = self.n // 2 - 1
-        i2 = self.n // 2
-
-        I = torch.ones(s.shape[0], dtype=self.type, device=self.device)
-        s11 = torch.cat([(I).unsqueeze(1), s], dim=1)
-        s11 = torch.cat([s11, (I).unsqueeze(1)], dim=1)
-        s12 = torch.cat([(I).unsqueeze(1), s], dim=1)
-        s12 = torch.cat([s12, (-I).unsqueeze(1)], dim=1)
-        s21 = torch.cat([(-I).unsqueeze(1), s], dim=1)
-        s21 = torch.cat([s21, (I).unsqueeze(1)], dim=1)
-        s22 = torch.cat([(-I).unsqueeze(1), s], dim=1)
-        s22 = torch.cat([s22, (-I).unsqueeze(1)], dim=1)
-
-
-
-        # mask = (s[:, i1] * s[:, i2] + 1) / 2
-
-        # psi0 = psi_func(s2)
-        beta = torch.tensor([beta], dtype=self.type, device=self.device)
-        psi = (torch.exp(beta) * (psi_func(s11) + psi_func(s22)) + torch.exp(-beta) * (psi_func(s12) + psi_func(s21)))
-        # psi = self.B_on_site(0, psi_func, s2, beta=beta)
-        # psi *= mask
-        # psi = self.B_on_site(0, psi_func, s, beta=beta)
+        psi0 = psi_func(s[:, index_list])
+        psi = (torch.exp(beta) * psi0 * mask + torch.exp(-beta) * psi0 * (1 - mask)) * mask0 * mask1 * mask2
 
         return psi
 
+    def Bs_on_bound_3d(self, psi_func, site_index, s, beta=None):
+        if beta is None:
+            beta = self.b
 
+        m = s.shape[1]
+        index_list = [i for i in range(m)]
+        index_list.remove(m - self.n - 1)
+        psi = self.B_on_site(0, psi_func, s[:,index_list], beta=beta)
+        mask0 = (s[:, 0] * s[:, m - self.n - 1] + 1) / 2
+        mask1 = (s[:, 0] * s[:, m - self.n + site_index]) / 2
+        psi *= mask0 * mask1
+
+        return psi
+
+    def Bs_on_edge_r_3d(self, psi_func, s, beta=None):
+        if beta is None:
+            beta = self.b
+
+        s = torch.cat([(s[:, -1]).unsqueeze(1), s], dim=1)
+        psi = self.B_on_site(0, psi_func, s, beta=beta)
+
+        return psi
+
+    def Bs_on_edge(self, psi_func, s, beta=None):
+        if beta is None:
+            beta = self.b
+
+        beta = torch.tensor([beta], dtype=self.type, device=self.device)
+
+        m = s.shape[1]
+        n = self.n
+
+        mask = (s[:, n * (n - 1) + 1] * s[:, n * (n - 1) + 2] + 1) / 2
+        mask0 = (s[:, 0] * s[:, n * (n - 1) + 2] + 1) / 2
+
+        psi0 = psi_func(s[:, 1:])
+        psi = (torch.exp(beta) * psi0 * mask + torch.exp(-beta) * psi0 * (1 - mask)) * mask0
+
+        return psi
 
     def Bs_on_bound(self, psi_func, site_index, s, beta=None):
         if beta is None:
             beta = self.b
 
+        n = self.n
+
         psi = self.B_on_site(0, psi_func, s, beta=beta)
-        mask = (s[:, 0] * s[:, site_index] + 1) / 2
+        mask = (s[:, 0] * s[:, n * (n - 1) + site_index + 1] + 1) / 2
         psi *= mask
 
         return psi
