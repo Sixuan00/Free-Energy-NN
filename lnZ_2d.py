@@ -221,6 +221,21 @@ class HonNN:
 
         return psi
 
+
+    def Bs_on_bounds(self, psi_func, site_indexes, s, beta=None):
+        if beta is None:
+            beta = self.b
+
+        psi = self.B_on_sites([0, -1], psi_func, s, beta=beta)
+        mask1 = (s[:, 0] * s[:, site_indexes[0]] + 1) / 2
+        mask2 = (s[:, -1] * s[:, site_indexes[1]] + 1) / 2
+        psi *= mask1 * mask2
+
+        return psi
+
+
+
+
     def Bs_on_edge_r(self, psi_func, s, beta=None):
         if beta is None:
             beta = self.b
@@ -250,5 +265,18 @@ class HonNN:
 
 
 
+def test():
+    TS = TensorSampling(num_site=4, beta=0.44068679350977147)
+    psi0, log_norm = TS.psi0()
+    print(log_norm.item())
+
+    TS = TensorSampling(num_site=4, beta=0.44068679350977147 * (1 - 0.9985 ** 15000))
+    psi0, log_norm = TS.psi0()
+    print(log_norm.item())
+
+
+
+
+
 if __name__ == '__main__':
-    pass
+    test()

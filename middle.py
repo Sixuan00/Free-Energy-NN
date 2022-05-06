@@ -1,3 +1,4 @@
+#%%
 import torch
 from NAQS import NAQS, intial_state
 from lnZ_2d import TensorSampling, HonNN
@@ -7,13 +8,14 @@ from scipy import sparse
 import csv
 import time
 
-# num_site = 4
-# net_depth = 1
-# batch_size = 1000
-# l_r = 0.001
-# path = './data/' + 'betac_trial1/' + 'n%d_d%d_b%d_lr%f/' % (num_site, net_depth, batch_size, l_r)
-# model = torch.load(path + 'init_' + 'model_15000.pth')
+num_site = 4
+net_depth = 1
+batch_size = 1000
+l_r = 0.001
+path = './data/' + 'betac_trial1/' + 'n%d_d%d_b%d_lr%f/' % (num_site, net_depth, batch_size, l_r)
+model = torch.load(path + 'init_' + 'model_15000.pth')
 
+#%%
 def learning(model, model0, optimizer, loss_func, num_epoch, batch_size, my_device, beta=1.0, memo='init', save_path='./data/', B_anneal = 0.999):
     accuracy = 1
     model = model.to(my_device)
@@ -120,37 +122,9 @@ def calc_H(num_site, site_index, mode='B', beta=1.0, my_type=torch.float64, my_d
 
         return H
 
-    if mode == 'bounds': # 这里的num_site是指现阶段有的指标数，而不是实际总的site数
-        H = B.copy()
-        for i in range(1, num_site - 1):
-            H = sparse.kron(H, I2, format='coo')
-        H = sparse.kron(H, B, format='coo')
-
-        h11 = (
-            (np.array([[-1, 1]]).repeat(2 ** site_index, axis=0)).repeat(2 ** (num_site - site_index-1), axis=1)).reshape(
-            -1)
-        h00 = np.array([-1, 1]).repeat(2 ** (num_site-1))
-        mask1 = sparse.coo_matrix((h00 * h11 + 1) / 2)
-
-        h11 = (
-            (np.array([[-1, 1]]).repeat(2 ** (num_site - site_index - 1), axis=0)).repeat(2 ** (site_index),
-                                                                         axis=1)).reshape(
-            -1)
-        h00 = np.array([[-1, 1]]).repeat(2 ** (num_site - 1), axis=0).reshape(-1)
-        mask2 = sparse.coo_matrix((h00 * h11 + 1) / 2)
-
-        mask = mask1.multiply(mask2)
-
-        H = ((H.T).multiply(mask)).T
-        return H
 
 
-
-
-
-
-
-    if mode == 'bound': #num_site的定义有出入，这里已经考虑site数的增多，此部分num_site是本身的num_site
+    if mode == 'bound':
         H = B.copy()
         for i in range(num_site):
             H = sparse.kron(H, I2, format='coo')
@@ -188,64 +162,56 @@ def calc_H(num_site, site_index, mode='B', beta=1.0, my_type=torch.float64, my_d
 
     pass
 
-#%%
-def bound_state(num_site, net_depth, beta, batch_size, num_epoch, l_r, model0, my_type, my_device, save_path, memo='bounds', B_anneal=0.999):
-    if num_site // 2 < 3:
-        print('num_site is too small')
-        return model0, torch.tensor(0, dtype=my_type, device=my_device)
 
+#%%
+# def eat_state_(num_site, net_depth, beta, batch_size, num_epoch, l_r, model0, my_type, my_device,save_path, memo='B_'):
+#     log_norm = 0
+#     model0 = model0.to(my_device)
+#
+#     HN = HonNN(num_site, beta=beta, my_type=my_type, my_device=my_device)
+#     for site_index in range(num_site // 2):
+#         site_indexes = [site_index, num_site - site_index - 1]
+#         model = NAQS(num_site=num_site, net_depth=net_depth, my_type=my_type, my_device=my_device)
+#
+#         optimizer = torch.optim.Adam(model.parameters(), lr=l_r)
+#
+#         H = lambda beta : calc_H(num_site, site_index, mode='Bs', beta=beta, my_type=my_type, my_device=my_device)
+#         norm = lambda beta: HN.calc_norm(H(beta), model0)
+#         log_norm += torch.log(norm(beta=beta))
+#         loss_func = lambda samples, beta: - HN.B_on_sites(site_indexes, model0.psi_total, samples,
+#                                                     beta=beta) / norm(beta=beta) / model.psi_total(samples)
+#
+#         model0 = learning(model, model0, optimizer, loss_func, num_epoch=num_epoch, batch_size=batch_size,
+#                           my_device=my_device, beta=beta, memo=memo + '_' + str(site_index), save_path=save_path)
+#
+#         torch.save(model0, save_path + memo + '_model_' + str(site_index) + '.pth')
+#         torch.save(torch.log(norm(beta=beta)), save_path + memo + '_log_norm_' + str(site_index) + '.pth')
+#
+#     return model0, log_norm
+
+#%%
+def _B_state(num_site, net_depth, beta, batch_size, num_epoch, l_r, model0, my_type, my_device, save_path, memo='_B_', B_anneal=0.999):
     log_norm = 0
     model0 = model0.to(my_device)
     HN = HonNN(num_site, beta=beta, my_type=my_type, my_device=my_device)
 
     # bound
-    for index in range(3, num_site // 2 + 1):
-        H = lambda beta: calc_H(num_site + 2, index, mode='bounds', beta=beta, my_type=my_type, my_device=my_device)
-        norm = lambda beta: HN.calc_norm(H(beta), model0)
-        log_norm += torch.log(norm(beta=beta))
-        model = NAQS(num_site=num_site + 2, net_depth=net_depth, my_type=my_type, my_device=my_device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=l_r)
-        site_indexes = [index, num_site - index + 1]
-        loss_func = lambda samples, beta: - HN.Bs_on_bounds(model0.psi_total, site_indexes, samples, beta=beta) / norm(
-            beta=beta) / model.psi_total(samples)
-        model0 = learning(model, model0, optimizer, loss_func, beta=beta, num_epoch=num_epoch, batch_size=batch_size,
-                          my_device=my_device, memo=memo + '_' + str(0), save_path=save_path,
-                          B_anneal=B_anneal)
+    H = lambda beta: calc_H(num_site + 2, 0, mode='_B_', beta=beta, my_type=my_type, my_device=my_device)
+    norm = lambda beta: HN.calc_norm(H(beta), model0)
+    log_norm += torch.log(norm(beta=beta))
+    model = NAQS(num_site=num_site, net_depth=net_depth, my_type=my_type, my_device=my_device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=l_r)
+    loss_func = lambda samples, beta: - HN.B_on_middle(model0.psi_total, samples, beta=beta) / norm(
+        beta=beta) / model.psi_total(samples)
+    model0 = learning(model, model0, optimizer, loss_func, beta=beta, num_epoch=num_epoch, batch_size=batch_size,
+                      my_device=my_device, memo=memo + '_' + str(0), save_path=save_path,
+                      B_anneal=B_anneal)
 
-        torch.save(model0, save_path + memo + '_model_' + str(index - 2) + '.pth')
-        torch.save(torch.log(norm(beta)), save_path + memo + '_log_norm_' + str(index - 2) + '.pth')
+    torch.save(model0, save_path + memo + '_model_' + str(0) + '.pth')
+    torch.save(torch.log(norm(beta)), save_path + memo + '_log_norm_' + str(0) + '.pth')
 
 
-
-def main():
-    import os
-    batch_size = 1000
-    l_r = 0.001
-    beta_c = 0.44068679350977147
-    beta = beta_c
-    B_anneal = 0.9985
-
-    num_epoch = 30000
-    my_type = torch.float64
-    my_device = torch.device('cuda:4')
-
-    for num_site in [6]:
-        for net_depth in [3]:
-            path = './data/' + 'ana_trial1/' + 'n%d_d%d_b%d_lr%f_a%f/' % (num_site, 3, 1000, 0.001, 0.9985)
-            model0 = torch.load(path + 'edge_' + 'model_%d.pth' % (0))
-
-            data_saving_path = './data/' + 'ana_trial1/' + 'n%d_d%d_b%d_lr%f_a%f/' % (
-            num_site, net_depth, batch_size, l_r, B_anneal)
-
-            if not os.path.exists(data_saving_path):
-                # os.mkdir(data_saving_path)
-                os.makedirs(data_saving_path)
-
-            bound_state(num_site, net_depth, beta, batch_size, num_epoch, l_r, model0, my_type, my_device,
-                       save_path=data_saving_path, B_anneal=B_anneal)
-
-
-
+    return model0, log_norm
 
 def test():
     batch_size = 1000
@@ -267,15 +233,41 @@ def test():
     HN = HonNN(num_site, beta=beta, my_type=my_type, my_device=my_device)
     TS = TensorSampling(num_site, beta=beta, my_type=my_type, my_device=my_device)
 
-    samples = TS.all_sample(num_site + 2)
-    site_indexes = [2,3]
-    phi = HN.Bs_on_bounds(model0.psi_total, site_indexes, samples, beta=beta)
-    H = calc_H(num_site=num_site + 2, site_index=2, beta=beta, my_device=my_device, my_type=my_type, mode='bounds')
-    # print(H.todense())
+    samples = TS.all_sample(num_site)
+    phi = HN.B_on_middle(model0.psi_total, samples, beta=beta)
+    H = calc_H(num_site=num_site + 2, site_index=0, beta=beta, my_device=my_device, my_type=my_type, mode='_B_')
+    print(H.todense())
     norm = HN.calc_norm(H, model0)
     print(norm)
     print(torch.sqrt(torch.sum(phi * phi)))
 
+
+def main():
+    import os
+    batch_size = 1000
+    l_r = 0.001
+    beta_c = 0.44068679350977147
+    beta = beta_c
+    B_anneal = 0.9985
+
+    num_epoch = 30000
+    my_type = torch.float64
+    my_device = torch.device('cuda:4')
+
+    for num_site in [4]:
+        for net_depth in [3]:
+            path = './data/' + 'ana_trial1/' + 'n%d_d%d_b%d_lr%f_a%F/' % (num_site, 3, 1000, 0.001, 0.9985)
+            model0 = torch.load(path + 'edge_' + 'model_%d.pth' % (0))
+
+            data_saving_path = './data/' + 'ana_trial1/' + 'n%d_d%d_b%d_lr%f_a%f/' % (
+            num_site, net_depth, batch_size, l_r, B_anneal)
+
+            if not os.path.exists(data_saving_path):
+                # os.mkdir(data_saving_path)
+                os.makedirs(data_saving_path)
+
+            _B_state(num_site, net_depth, beta, batch_size, num_epoch, l_r, model0, my_type, my_device,
+                       save_path=data_saving_path, B_anneal=B_anneal)
 
 if __name__ == '__main__':
     # test()
